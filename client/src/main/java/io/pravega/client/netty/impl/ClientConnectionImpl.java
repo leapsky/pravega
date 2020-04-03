@@ -17,6 +17,8 @@ import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoop;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.PromiseCombiner;
+import io.netty.util.Recycler;
+import io.netty.util.Recycler.Handle;
 import io.pravega.common.Exceptions;
 import io.pravega.common.Timer;
 import io.pravega.shared.metrics.MetricNotifier;
@@ -88,9 +90,8 @@ public class ClientConnectionImpl implements ClientConnection {
             }
         });
         // Work around for https://github.com/netty/netty/issues/3246
-        eventLoop.execute(() -> {
-            channel.write(cmd, promise);
-        });
+        channel.eventLoop().execute(WriteInEventLoopCallback.create(channel, cmd, promise));
+
         Exceptions.handleInterrupted(() -> throttle.acquire(cmd.getDataLength()));
     }
     
@@ -113,6 +114,49 @@ public class ClientConnectionImpl implements ClientConnection {
         });
     }
     
+    private static final class WriteInEventLoopCallback implements Runnable {
+        private Channel channel;
+        private Append cmd;
+        private ChannelPromise promise;
+
+        static WriteInEventLoopCallback create(Channel channel, Append cmd, ChannelPromise promise) {
+            WriteInEventLoopCallback c =  recycler.get();
+            c.channel = channe
+            c.cmd = cmd;
+            c.promise = promise;
+            return c;
+        }
+
+        @Override
+        public void run() {
+            try {
+		channel.write(cmd, promise);
+            } finally {
+                recycle();
+            }
+        }
+
+        private void recycle() {
+            channel = null;
+            cmd = null;
+            promise = null;
+            recyclerHandle.recycle(this);
+        }
+
+        private final Handle<WriteInEventLoopCallback> recyclerHandle;
+
+        private WriteInEventLoopCallback(Handle<WriteInEventLoopCallback> recyclerHandle) {
+            this.recyclerHandle = recyclerHandle;
+        }
+
+        private static final Recycler<WriteInEventLoopCallback> recycler = new Recycler<WriteInEventLoopCallback>() {
+            @Override
+            protected WriteInEventLoopCallback newObject(Handle<WriteInEventLoopCallback> handle) {
+                return new WriteInEventLoopCallback(handle);
+            }
+        };
+    }
+
     @Override
     public void sendAsync(WireCommand cmd, CompletedCallback callback) {
         Channel channel = null;
