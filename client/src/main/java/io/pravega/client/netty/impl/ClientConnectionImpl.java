@@ -13,6 +13,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelPromise;
+import io.netty.channel.EventLoop;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.PromiseCombiner;
 import io.netty.util.Recycler;
@@ -75,37 +76,43 @@ public class ClientConnectionImpl implements ClientConnection {
 
     private void write(Append cmd) throws ConnectionFailedException {
         Channel channel = nettyHandler.getChannel();
-
+        EventLoop eventLoop = channel.eventLoop();
+        ChannelPromise promise = channel.newPromise();
+        promise.addListener((ChannelFutureListener) future -> {
+            throttle.release(cmd.getDataLength());
+            if (!future.isSuccess()) {
+                future.channel().pipeline().fireExceptionCaught(future.cause());
+                future.channel().close();
+            }
+        });
         // Work around for https://github.com/netty/netty/issues/3246
-        channel.eventLoop(WriteInEventLoopCallback.create(channel, cmd));
-
+        eventLoop.execute(WriteInEventLoopCallback.create(channel, cmd, promise));
         Exceptions.handleInterrupted(() -> throttle.acquire(cmd.getDataLength()));
     }
     
     private void write(WireCommand cmd) throws ConnectionFailedException {
         Channel channel = nettyHandler.getChannel();
-
+        EventLoop eventLoop = channel.eventLoop();
+        ChannelPromise promise = channel.newPromise();
+        promise.addListener((ChannelFutureListener) future -> {
+            if (!future.isSuccess()) {
+                future.channel().pipeline().fireExceptionCaught(future.cause());
+                future.channel().close();
+            }
+        });
         // Work around for https://github.com/netty/netty/issues/3246
-        channel.eventLoop(WriteInEventLoopCallback.create(channel, cmd));
+        eventLoop.execute(WriteInEventLoopCallback.create(channel, cmd, promise));
     }
-    
+
     private static final class WriteInEventLoopCallback implements Runnable {
         private Channel channel;
         private Object cmd;
         private ChannelPromise promise;
 
-        static WriteInEventLoopCallback create(Channel channel, Object cmd) {
+        static WriteInEventLoopCallback create(Channel channel, Object cmd, ChannelPromise promise) {
             WriteInEventLoopCallback c =  recycler.get();
             c.channel = channel;
             c.cmd = cmd;
-            ChannelPromise promise = channel.newPromise();
-            promise.addListener((ChannelFutureListener) future -> {
-                throttle.release(cmd.getDataLength());
-                if (!future.isSuccess()) {
-                    future.channel().pipeline().fireExceptionCaught(future.cause());
-                    future.channel().close();
-                }
-            });
             c.promise = promise;
             return c;
         }
