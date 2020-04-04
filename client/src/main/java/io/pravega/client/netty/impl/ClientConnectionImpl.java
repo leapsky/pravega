@@ -77,20 +77,9 @@ public class ClientConnectionImpl implements ClientConnection {
 
     private void write(Append cmd) throws ConnectionFailedException {
         Channel channel = nettyHandler.getChannel();
-        EventLoop eventLoop = channel.eventLoop();
-        ChannelPromise promise = channel.newPromise();
-        promise.addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture future) {
-                throttle.release(cmd.getDataLength());
-                if (!future.isSuccess()) {
-                    future.channel().pipeline().fireExceptionCaught(future.cause());
-                    future.channel().close();
-                }
-            }
-        });
+
         // Work around for https://github.com/netty/netty/issues/3246
-        channel.eventLoop().execute(WriteInEventLoopCallback.create(channel, cmd, promise));
+        channel.eventLoop(WriteInEventLoopCallback.create(channel, cmd));
 
         Exceptions.handleInterrupted(() -> throttle.acquire(cmd.getDataLength()));
     }
@@ -119,18 +108,26 @@ public class ClientConnectionImpl implements ClientConnection {
         private Append cmd;
         private ChannelPromise promise;
 
-        static WriteInEventLoopCallback create(Channel channel, Append cmd, ChannelPromise promise) {
+        static WriteInEventLoopCallback create(Channel channel, Append cmd) {
             WriteInEventLoopCallback c =  recycler.get();
-            c.channel = channe
-            c.cmd = cmd;
+            ChannelPromise promise = channel.newPromise();
+            promise.addListener((ChannelFutureListener) future -> {
+                throttle.release(cmd.getDataLength());
+                if (!future.isSuccess()) {
+                    future.channel().pipeline().fireExceptionCaught(future.cause());
+                    future.channel().close();
+                }
+            });
             c.promise = promise;
+            c.channel = channel;
+            c.cmd = cmd;
             return c;
         }
 
         @Override
         public void run() {
             try {
-		channel.write(cmd, promise);
+		        channel.write(cmd, promise);
             } finally {
                 recycle();
             }
