@@ -11,10 +11,8 @@ package io.pravega.client.netty.impl;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelPromise;
-import io.netty.channel.EventLoop;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.PromiseCombiner;
 import io.netty.util.Recycler;
@@ -86,30 +84,20 @@ public class ClientConnectionImpl implements ClientConnection {
     
     private void write(WireCommand cmd) throws ConnectionFailedException {
         Channel channel = nettyHandler.getChannel();
-        EventLoop eventLoop = channel.eventLoop();
-        ChannelPromise promise = channel.newPromise();
-        promise.addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture future) {
-                if (!future.isSuccess()) {
-                    future.channel().pipeline().fireExceptionCaught(future.cause());
-                    future.channel().close();
-                }
-            }
-        });
+
         // Work around for https://github.com/netty/netty/issues/3246
-        eventLoop.execute(() -> {
-            channel.write(cmd, promise);
-        });
+        channel.eventLoop(WriteInEventLoopCallback.create(channel, cmd));
     }
     
     private static final class WriteInEventLoopCallback implements Runnable {
         private Channel channel;
-        private Append cmd;
+        private Object cmd;
         private ChannelPromise promise;
 
-        static WriteInEventLoopCallback create(Channel channel, Append cmd) {
+        static WriteInEventLoopCallback create(Channel channel, Object cmd) {
             WriteInEventLoopCallback c =  recycler.get();
+            c.channel = channel;
+            c.cmd = cmd;
             ChannelPromise promise = channel.newPromise();
             promise.addListener((ChannelFutureListener) future -> {
                 throttle.release(cmd.getDataLength());
@@ -119,15 +107,13 @@ public class ClientConnectionImpl implements ClientConnection {
                 }
             });
             c.promise = promise;
-            c.channel = channel;
-            c.cmd = cmd;
             return c;
         }
 
         @Override
         public void run() {
             try {
-		        channel.write(cmd, promise);
+                channel.write(cmd, promise);
             } finally {
                 recycle();
             }
