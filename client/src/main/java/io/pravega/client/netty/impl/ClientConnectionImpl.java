@@ -47,7 +47,8 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Semaphore throttle = new Semaphore(AppendBatchSizeTracker.MAX_BATCH_SIZE);
 
-    private int bytesLeftInBlock = 131072;
+    private final int batchSize = 131072;
+    private int bytesLeftInBlock = batchSize;
     private final List<Append> pendingList = new ArrayList<>();
 
     public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
@@ -102,9 +103,10 @@ public class ClientConnectionImpl implements ClientConnection {
                 });
                 Exceptions.handleInterrupted(() -> throttle.acquire(cmd.getDataLength()));
             }
+            channel.flush();
             pendingList.clear();
-            bytesLeftInBlock = 131072;
-	        channel.flush();
+            pendingList.add(cmd);
+            bytesLeftInBlock = batchSize - cmd.getDataLength();
         }
     }
 
@@ -126,6 +128,7 @@ public class ClientConnectionImpl implements ClientConnection {
             channel.write(cmd, promise);
         });
     }
+
     @Override
     public void sendAsync(WireCommand cmd, CompletedCallback callback) {
         Channel channel = null;
