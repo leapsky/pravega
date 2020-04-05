@@ -11,13 +11,12 @@ package io.pravega.client.netty.impl;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoop;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.PromiseCombiner;
-import io.netty.util.Recycler;
-import io.netty.util.Recycler.Handle;
 import io.pravega.common.Exceptions;
 import io.pravega.common.Timer;
 import io.pravega.shared.metrics.MetricNotifier;
@@ -26,6 +25,7 @@ import io.pravega.shared.protocol.netty.AppendBatchSizeTracker;
 import io.pravega.shared.protocol.netty.ConnectionFailedException;
 import io.pravega.shared.protocol.netty.WireCommand;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.Getter;
@@ -46,6 +46,9 @@ public class ClientConnectionImpl implements ClientConnection {
     private final FlowHandler nettyHandler;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Semaphore throttle = new Semaphore(AppendBatchSizeTracker.MAX_BATCH_SIZE);
+
+    private int bytesLeftInBlock = 131072;
+    private final List<Append> pendingList = new ArrayList<>();
 
     public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
         this.connectionName = connectionName;
@@ -75,78 +78,54 @@ public class ClientConnectionImpl implements ClientConnection {
     }
 
     private void write(Append cmd) throws ConnectionFailedException {
-        Channel channel = nettyHandler.getChannel();
-        EventLoop eventLoop = channel.eventLoop();
-        ChannelPromise promise = channel.newPromise();
-        promise.addListener((ChannelFutureListener) future -> {
-            throttle.release(cmd.getDataLength());
-            if (!future.isSuccess()) {
-                future.channel().pipeline().fireExceptionCaught(future.cause());
-                future.channel().close();
+        if (bytesLeftInBlock > cmd.getDataLength()) {
+            pendingList.add(cmd);
+            bytesLeftInBlock -= cmd.getDataLength();
+        } else {
+            Channel channel = nettyHandler.getChannel();
+            EventLoop eventLoop = channel.eventLoop();
+            for (Append append:  pendingList) {
+                ChannelPromise promise = channel.newPromise();
+                promise.addListener(new ChannelFutureListener() {
+                    @Override
+                    public void operationComplete(ChannelFuture future) {
+                        throttle.release(append.getDataLength());
+                        if (!future.isSuccess()) {
+                            future.channel().pipeline().fireExceptionCaught(future.cause());
+                            future.channel().close();
+                        }
+                    }
+                });
+                // Work around for https://github.com/netty/netty/issues/3246
+                eventLoop.execute(() -> {
+                    channel.write(append, promise);
+                });
+                Exceptions.handleInterrupted(() -> throttle.acquire(cmd.getDataLength()));
             }
-        });
-        // Work around for https://github.com/netty/netty/issues/3246
-        eventLoop.execute(WriteInEventLoopCallback.create(channel, cmd, promise));
-        Exceptions.handleInterrupted(() -> throttle.acquire(cmd.getDataLength()));
+            pendingList.clear();
+            bytesLeftInBlock = 131072;
+	        channel.flush();
+        }
     }
-    
+
     private void write(WireCommand cmd) throws ConnectionFailedException {
         Channel channel = nettyHandler.getChannel();
         EventLoop eventLoop = channel.eventLoop();
         ChannelPromise promise = channel.newPromise();
-        promise.addListener((ChannelFutureListener) future -> {
-            if (!future.isSuccess()) {
-                future.channel().pipeline().fireExceptionCaught(future.cause());
-                future.channel().close();
+        promise.addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) {
+                if (!future.isSuccess()) {
+                    future.channel().pipeline().fireExceptionCaught(future.cause());
+                    future.channel().close();
+                }
             }
         });
         // Work around for https://github.com/netty/netty/issues/3246
-        eventLoop.execute(WriteInEventLoopCallback.create(channel, cmd, promise));
+        eventLoop.execute(() -> {
+            channel.write(cmd, promise);
+        });
     }
-
-    private static final class WriteInEventLoopCallback implements Runnable {
-        private Channel channel;
-        private Object cmd;
-        private ChannelPromise promise;
-
-        static WriteInEventLoopCallback create(Channel channel, Object cmd, ChannelPromise promise) {
-            WriteInEventLoopCallback c =  recycler.get();
-            c.channel = channel;
-            c.cmd = cmd;
-            c.promise = promise;
-            return c;
-        }
-
-        @Override
-        public void run() {
-            try {
-                channel.write(cmd, promise);
-            } finally {
-                recycle();
-            }
-        }
-
-        private void recycle() {
-            channel = null;
-            cmd = null;
-            promise = null;
-            recyclerHandle.recycle(this);
-        }
-
-        private final Handle<WriteInEventLoopCallback> recyclerHandle;
-
-        private WriteInEventLoopCallback(Handle<WriteInEventLoopCallback> recyclerHandle) {
-            this.recyclerHandle = recyclerHandle;
-        }
-
-        private static final Recycler<WriteInEventLoopCallback> recycler = new Recycler<WriteInEventLoopCallback>() {
-            @Override
-            protected WriteInEventLoopCallback newObject(Handle<WriteInEventLoopCallback> handle) {
-                return new WriteInEventLoopCallback(handle);
-            }
-        };
-    }
-
     @Override
     public void sendAsync(WireCommand cmd, CompletedCallback callback) {
         Channel channel = null;
