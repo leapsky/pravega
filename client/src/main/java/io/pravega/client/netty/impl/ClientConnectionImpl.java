@@ -103,7 +103,7 @@ public class ClientConnectionImpl implements ClientConnection {
                 });
                 Exceptions.handleInterrupted(() -> throttle.acquire(cmd.getDataLength()));
             }
-            channel.flush();
+            //channel.flush();
             pendingList.clear();
             pendingList.add(cmd);
             bytesLeftInBlock = batchSize - cmd.getDataLength();
