@@ -172,7 +172,7 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
     }
 
     private PositionInternal getPosition() {
-	return new PositionImpl(new HashMap<>());
+        return new PositionImpl(new HashMap<>());
     }
 
     /**
