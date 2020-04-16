@@ -172,10 +172,7 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
     }
 
     private PositionInternal getPosition() {
-        Map<SegmentWithRange, Long> positions = readers.stream()
-                .collect(Collectors.toMap(e -> new SegmentWithRange(e.getSegmentId(), ranges.get(e.getSegmentId())), e -> e.getOffset()));
-        sealedSegments.forEach((key, value) -> positions.put(key, -1L));
-        return new PositionImpl(positions);
+	return new PositionImpl(new HashMap<>());
     }
 
     /**
@@ -273,7 +270,6 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
                     sealedSegments.put(newSegment.getKey(), newSegment.getValue());
                 } else {
                     Segment segment = newSegment.getKey().getSegment();
-
                     final EventSegmentReader in = inputStreamFactory.createEventReaderForSegment(segment, segmentsWithData, endOffset);
                     in.setOffset(newSegment.getValue());
                     readers.add(in);
