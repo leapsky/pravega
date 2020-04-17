@@ -62,7 +62,7 @@ public class TcpClientConnection implements ClientConnection {
                 byte[] header = new byte[8];
                 while (!stop.get()) {
                     try {
-                        inputStream.readNBytes(header, 0, 8);
+                        inputStream.read(header, 0, 8);
                         ByteBuffer headerReadingBuffer = ByteBuffer.wrap(header);
                         int t = headerReadingBuffer.getInt();
                         WireCommandType type = WireCommands.getType(t);
@@ -75,7 +75,8 @@ public class TcpClientConnection implements ClientConnection {
                             throw new InvalidMessageException("Event of invalid length: " + length);
                         }
 
-                        byte[] bytes = inputStream.readNBytes(length);
+                        byte[] bytes = new byte[length];
+                        inputStream.read(bytes, 0, length);
                         WireCommand command = type.readFrom(new ByteBufInputStream(Unpooled.wrappedBuffer(bytes)), length);
                         if (command instanceof WireCommands.DataAppended) {
                             WireCommands.DataAppended dataAppended = (WireCommands.DataAppended) command;
