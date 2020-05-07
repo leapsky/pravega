@@ -23,6 +23,7 @@ import io.pravega.segmentstore.server.DataCorruptionException;
 import io.pravega.segmentstore.server.ReadIndex;
 import io.pravega.segmentstore.server.SegmentMetadata;
 import io.pravega.segmentstore.storage.ReadOnlyStorage;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -169,7 +170,7 @@ public class ContainerReadIndex implements ReadIndex {
     }
 
     @Override
-    public BufferView readDirect(long streamSegmentId, long offset, int length) throws StreamSegmentNotExistsException {
+    public InputStream readDirect(long streamSegmentId, long offset, int length) throws StreamSegmentNotExistsException {
         Exceptions.checkNotClosed(this.closed.get(), this);
         log.debug("{}: readDirect (StreamSegmentId = {}, Offset = {}, Length = {}).", this.traceObjectId, streamSegmentId, offset, length);
 

@@ -9,7 +9,6 @@
  */
 package io.pravega.client.state.impl;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.pravega.client.SynchronizerClientFactory;
 import io.pravega.client.netty.impl.ClientConnection;
@@ -47,6 +46,7 @@ import io.pravega.shared.protocol.netty.PravegaNodeUri;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.Serializable;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map.Entry;
@@ -426,7 +426,7 @@ public class RevisionedStreamClientTest {
             WireCommands.Event event = new WireCommands.Event(Unpooled.wrappedBuffer(serializer.serialize("A")));
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             event.writeFields(new DataOutputStream(bout));
-            ByteBuf eventData = Unpooled.wrappedBuffer(bout.toByteArray());
+            ByteBuffer eventData = ByteBuffer.wrap(bout.toByteArray());
             // Invoke Reply processor to simulate a successful read.
             rp.process(new WireCommands.SegmentRead(request.getSegment(), 15L, true, true, eventData, request
                     .getRequestId()));

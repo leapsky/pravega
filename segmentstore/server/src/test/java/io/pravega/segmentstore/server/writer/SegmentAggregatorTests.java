@@ -14,7 +14,6 @@ import io.pravega.common.Exceptions;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.hash.RandomFactory;
 import io.pravega.common.io.FixedByteArrayOutputStream;
-import io.pravega.common.util.BufferView;
 import io.pravega.common.util.ByteArraySegment;
 import io.pravega.segmentstore.contracts.AttributeUpdate;
 import io.pravega.segmentstore.contracts.AttributeUpdateType;
@@ -73,6 +72,7 @@ import java.util.stream.Stream;
 import lombok.Cleanup;
 import lombok.RequiredArgsConstructor;
 import lombok.val;
+import org.apache.commons.io.IOUtils;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -2235,9 +2235,9 @@ public class SegmentAggregatorTests extends ThreadPooledTestSuite {
 
     private void getAppendData(StorageOperation operation, OutputStream stream, TestContext context) {
         Assert.assertTrue("Not an append operation: " + operation, operation instanceof CachedStreamSegmentAppendOperation);
-        BufferView result = context.dataSource.getAppendData(operation.getStreamSegmentId(), operation.getStreamSegmentOffset(), (int) operation.getLength());
+        InputStream result = context.dataSource.getAppendData(operation.getStreamSegmentId(), operation.getStreamSegmentOffset(), (int) operation.getLength());
         try {
-            result.copyTo(stream);
+            IOUtils.copy(result, stream);
         } catch (IOException ex) {
             Assert.fail("Not expecting this exception: " + ex);
         }
