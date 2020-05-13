@@ -9,6 +9,7 @@
  */
 package io.pravega.segmentstore.server.reading;
 
+import io.pravega.common.io.StreamHelpers;
 import io.pravega.segmentstore.contracts.ReadResult;
 import io.pravega.segmentstore.contracts.ReadResultEntryType;
 import io.pravega.segmentstore.contracts.SegmentProperties;
@@ -160,7 +161,7 @@ public class StreamSegmentStorageReaderTests extends ThreadPooledTestSuite {
                 entry.requestContent(TIMEOUT);
                 val contents = entry.getContent().get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
                 AssertExtensions.assertGreaterThanOrEqual("Empty read entry contents.", 0, contents.getLength());
-                val readData = contents.getCopy();
+                val readData = StreamHelpers.readAll(contents.getData(), contents.getLength());
                 AssertExtensions.assertArrayEquals("Unexpected data read back.", writtenData, (int) entry.getStreamSegmentOffset(),
                         readData, 0, readData.length);
             }

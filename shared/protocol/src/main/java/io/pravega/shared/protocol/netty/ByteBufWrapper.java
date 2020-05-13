@@ -17,8 +17,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.List;
 import javax.annotation.concurrent.NotThreadSafe;
 import lombok.NonNull;
 
@@ -74,11 +72,6 @@ public class ByteBufWrapper implements BufferView {
     }
 
     @Override
-    public List<ByteBuffer> getContents() {
-        return Arrays.asList(this.buf.nioBuffers());
-    }
-
-    @Override
     public int getLength() {
         return this.buf.readableBytes();
     }
@@ -120,17 +113,14 @@ public class ByteBufWrapper implements BufferView {
     @Override
     public int copyTo(ByteBuffer byteBuffer) {
         Exceptions.checkNotClosed(this.buf.refCnt() == 0, this);
-        ByteBuf source = this.buf.duplicate();
+        ByteBuf buf = this.buf.duplicate();
         int length = byteBuffer.remaining();
         if (length > getLength()) {
-            int origLimit = byteBuffer.limit();
+            byteBuffer = byteBuffer.duplicate();
             length = getLength();
             byteBuffer.limit(length);
-            source.readBytes(byteBuffer);
-            byteBuffer.limit(origLimit);
-        } else {
-            source.readBytes(byteBuffer);
         }
+        buf.readBytes(byteBuffer);
         return length;
     }
 

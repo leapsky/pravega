@@ -9,7 +9,6 @@
  */
 package io.pravega.segmentstore.contracts;
 
-import io.pravega.common.util.BufferView;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
@@ -47,9 +46,10 @@ public interface ReadResultEntry {
      * calling this method will not trigger any actions (such as data retrieval). Use the requestContent() method to do
      * that.
      *
-     * @return Future that will contain a {@link BufferView} representing the contents when completed.
+     * @return Future that will contain Read Result Entry contents when completed
+     *
      */
-    CompletableFuture<BufferView> getContent();
+    CompletableFuture<ReadResultEntryContents> getContent();
 
     /**
      * Initiates an asynchronous action to fetch the contents of this ReadResultEntry, if necessary.

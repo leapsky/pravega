@@ -31,6 +31,7 @@ import io.pravega.segmentstore.server.logs.operations.StreamSegmentAppendOperati
 import io.pravega.segmentstore.server.logs.operations.StreamSegmentMapOperation;
 import io.pravega.test.common.AssertExtensions;
 import io.pravega.test.common.ThreadPooledTestSuite;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -265,7 +266,7 @@ public class MemoryStateUpdaterTests extends ThreadPooledTestSuite {
         }
 
         @Override
-        public BufferView readDirect(long streamSegmentId, long offset, int length) {
+        public InputStream readDirect(long streamSegmentId, long offset, int length) {
             invoke(new MethodInvocation(READ_DIRECT)
                     .withArg("offset", offset)
                     .withArg("length", length));

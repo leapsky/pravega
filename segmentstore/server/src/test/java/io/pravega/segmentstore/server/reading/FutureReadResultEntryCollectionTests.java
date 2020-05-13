@@ -9,9 +9,10 @@
  */
 package io.pravega.segmentstore.server.reading;
 
-import io.pravega.common.util.ByteArraySegment;
+import io.pravega.segmentstore.contracts.ReadResultEntryContents;
 import io.pravega.test.common.AssertExtensions;
 import io.pravega.test.common.IntentionalException;
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -99,7 +100,7 @@ public class FutureReadResultEntryCollectionTests {
 
         for (int i = 0; i < entries.size(); i++) {
             if (i % 2 == 0) {
-                entries.get(i).complete(new ByteArraySegment(new byte[1]));
+                entries.get(i).complete(new ReadResultEntryContents(new ByteArrayInputStream(new byte[1]), 1));
             } else {
                 entries.get(i).fail(new IntentionalException());
             }

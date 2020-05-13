@@ -11,11 +11,10 @@ package io.pravega.segmentstore.server.writer;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterators;
 import io.pravega.common.Exceptions;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.function.Callbacks;
-import io.pravega.common.util.BufferView;
-import io.pravega.common.util.ByteArraySegment;
 import io.pravega.common.util.SequencedItemList;
 import io.pravega.segmentstore.contracts.Attributes;
 import io.pravega.segmentstore.contracts.StreamSegmentNotExistsException;
@@ -28,6 +27,9 @@ import io.pravega.segmentstore.server.logs.operations.Operation;
 import io.pravega.segmentstore.server.logs.operations.StreamSegmentAppendOperation;
 import io.pravega.segmentstore.storage.LogAddress;
 import io.pravega.test.common.ErrorInjector;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -372,7 +374,7 @@ class TestWriterDataSource implements WriterDataSource, AutoCloseable {
     }
 
     @Override
-    public BufferView getAppendData(long streamSegmentId, long startOffset, int length) {
+    public InputStream getAppendData(long streamSegmentId, long startOffset, int length) {
         AppendData ad;
         synchronized (this.lock) {
             ErrorInjector.throwSyncExceptionIfNeeded(this.getAppendDataErrorInjector);
@@ -598,8 +600,8 @@ class TestWriterDataSource implements WriterDataSource, AutoCloseable {
             this.data.put(segmentOffset, data);
         }
 
-        synchronized BufferView read(final long segmentOffset, final int length) {
-            ArrayList<BufferView> result = new ArrayList<>();
+        synchronized InputStream read(final long segmentOffset, final int length) {
+            ArrayList<InputStream> result = new ArrayList<>();
 
             // Locate first entry.
             long currentOffset = segmentOffset;
@@ -614,7 +616,7 @@ class TestWriterDataSource implements WriterDataSource, AutoCloseable {
             int remainingLength = length;
             while (entryData != null && remainingLength > 0) {
                 int entryLength = Math.min(remainingLength, entryData.length - entryOffset);
-                result.add(new ByteArraySegment(entryData, entryOffset, entryLength));
+                result.add(new ByteArrayInputStream(entryData, entryOffset, entryLength));
                 currentOffset += entryLength;
                 remainingLength -= entryLength;
                 entryOffset = 0;
@@ -625,7 +627,7 @@ class TestWriterDataSource implements WriterDataSource, AutoCloseable {
                 return null;
             }
 
-            return BufferView.wrap(result);
+            return new SequenceInputStream(Iterators.asEnumeration(result.iterator()));
         }
     }
 }

@@ -16,7 +16,6 @@ import io.pravega.common.ObjectClosedException;
 import io.pravega.common.TimeoutTimer;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.concurrent.MultiKeySequentialProcessor;
-import io.pravega.common.util.BufferView;
 import io.pravega.segmentstore.contracts.ReadResult;
 import io.pravega.segmentstore.contracts.SegmentProperties;
 import io.pravega.segmentstore.contracts.tables.BadKeyVersionException;
@@ -51,7 +50,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
-import lombok.Cleanup;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -573,9 +571,9 @@ class ContainerKeyIndex implements AutoCloseable {
         ReadResult rr = segment.read(lastIndexedOffset, (int) tailIndexLength, getRecoveryTimeout());
         AsyncReadResultProcessor
                 .processAll(rr, this.executor, getRecoveryTimeout())
-                .thenAcceptAsync(inputData -> {
+                .thenAcceptAsync(inputStream -> {
                     // Parse out all Table Keys and collect their latest offsets, as well as whether they were deleted.
-                    val updates = collectLatestOffsets(inputData, lastIndexedOffset, (int) tailIndexLength);
+                    val updates = collectLatestOffsets(inputStream, lastIndexedOffset, (int) tailIndexLength);
 
                     // Incorporate that into the cache.
                     this.cache.includeTailCache(segment.getSegmentId(), updates);
@@ -593,15 +591,13 @@ class ContainerKeyIndex implements AutoCloseable {
     }
 
     @SneakyThrows(IOException.class)
-    private Map<UUID, CacheBucketOffset> collectLatestOffsets(BufferView input, long startOffset, int maxLength) {
+    private Map<UUID, CacheBucketOffset> collectLatestOffsets(InputStream input, long startOffset, int maxLength) {
         EntrySerializer serializer = new EntrySerializer();
         val entries = new HashMap<UUID, CacheBucketOffset>();
         long nextOffset = startOffset;
         final long maxOffset = startOffset + maxLength;
-        @Cleanup
-        InputStream inputStream = input.getReader();
         while (nextOffset < maxOffset) {
-            val e = AsyncTableEntryReader.readEntryComponents(inputStream, nextOffset, serializer);
+            val e = AsyncTableEntryReader.readEntryComponents(input, nextOffset, serializer);
             val hash = this.keyHasher.hash(e.getKey());
             entries.put(hash, new CacheBucketOffset(nextOffset, e.getHeader().isDeletion()));
             nextOffset += e.getHeader().getTotalLength();
