@@ -30,6 +30,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import java.io.FileWriter;
+import java.io.IOException;
+import io.pravega.common.Timer;
 
 @Slf4j
 public class TcpClientConnection implements ClientConnection {
@@ -47,6 +50,7 @@ public class TcpClientConnection implements ClientConnection {
         private final ScheduledExecutorService thread;
         private final AppendBatchSizeTracker batchSizeTracker;
         private final AtomicBoolean stop = new AtomicBoolean(false);
+        private FileWriter logFile;
 
         public ConnectionReader(String name, InputStream inputStream, ReplyProcessor callback,
                                 AppendBatchSizeTracker batchSizeTracker) {
@@ -55,14 +59,25 @@ public class TcpClientConnection implements ClientConnection {
             this.callback = callback;
             this.thread = ExecutorServiceHelpers.newScheduledThreadPool(1, "Reading from " + name);
             this.batchSizeTracker = batchSizeTracker;
+            try {
+                this.logFile = new FileWriter("ConnectionReader.log", true);
+            } catch (IOException e) {
+                log.info("Error opening segmentReader log file");
+            }
         }
-        
+
         public void start() {
             thread.submit(() -> {
                 byte[] header = new byte[8];
                 while (!stop.get()) {
                     try {
+                    Timer timer = new Timer();
                         inputStream.read(header, 0, 8);
+                        try {
+                            logFile.write(timer.getElapsedMillis() + "\n");
+                        } catch (IOException e) {
+                            log.info("Error writing to ConnectionReader log file");
+                        }
                         ByteBuffer headerReadingBuffer = ByteBuffer.wrap(header);
                         int t = headerReadingBuffer.getInt();
                         WireCommandType type = WireCommands.getType(t);
