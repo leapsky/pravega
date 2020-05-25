@@ -62,7 +62,7 @@ public class TcpClientConnection implements ClientConnection {
             try {
                 this.logFile = new FileWriter("ConnectionReader.log", true);
             } catch (IOException e) {
-                log.info("Error opening segmentReader log file");
+                log.info("Error opening ConnectionReader log file");
             }
         }
 
